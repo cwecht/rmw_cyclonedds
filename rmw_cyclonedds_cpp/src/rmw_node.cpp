@@ -2014,7 +2014,9 @@ extern "C" rmw_ret_t rmw_publish(
   auto pub = static_cast<CddsPublisher *>(publisher->data);
   assert(pub);
   TRACEPOINT(rmw_publish, ros_message);
-  if (dds_write(pub->enth, ros_message) >= 0) {
+  const dds_time_t tstamp = std::chrono::system_clock::now().time_since_epoch().count();
+  TRACEPOINT(write, (const void*)publisher, ros_message, tstamp);
+  if (dds_write_ts(pub->enth, ros_message, tstamp) >= 0) {
     return RMW_RET_OK;
   } else {
     RMW_SET_ERROR_MSG("failed to publish data");
@@ -2514,6 +2516,9 @@ static CddsPublisher * create_cdds_publisher(
   pub->sample_size = sample_size;
   dds_delete_qos(qos);
   dds_delete(topic);
+  char topic_buffer[256];
+  dds_get_name(topic, &topic_buffer, sizeof(topic_buffer));
+  TRACEPOINT(create_writer, static_cast<const void *>(pub), &topic_buffer, pub->gid);
   return pub;
 
 fail_instance_handle:
@@ -3214,6 +3219,7 @@ extern "C" rmw_subscription_t * rmw_create_subscription(
 
   cleanup_subscription.cancel();
   TRACEPOINT(rmw_subscription_init, static_cast<const void *>(sub), cddssub->gid.data);
+  TRACEPOINT(create_reader, static_cast<const void *>(sub), topic_name, cddssub->gid.data);
   return sub;
 }
 
@@ -3406,6 +3412,7 @@ static rmw_ret_t rmw_take_int(
   }
   *taken = false;
 take_done:
+  TRACEPOINT(read, static_cast<const void *>(subscription), static_cast<const void *>(ros_message));
   TRACEPOINT(
     rmw_take,
     static_cast<const void *>(subscription),
